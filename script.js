@@ -1,180 +1,266 @@
-const boardContainer = document.getElementById("board-container");
-const startBtn = document.getElementById("start-btn");
-const player1Btn = document.getElementById("player1-btn");
-const player2Btn = document.getElementById("player2-btn");
-const diceDisplay = document.getElementById("dice");
-const diceValueDisplay = document.getElementById("dice-value");
-const turnIndicator = document.getElementById("turn-indicator");
+class CircularHexGame {
+  constructor() {
+    this.boardContainer = document.getElementById("board-container");
+    this.startBtn = document.getElementById("start-btn");
+    this.player1Btn = document.getElementById("player1-btn");
+    this.player2Btn = document.getElementById("player2-btn");
+    this.diceElement = document.getElementById("dice");
+    this.diceValueElement = document.getElementById("dice-value");
+    this.turnIndicator = document.getElementById("turn-indicator");
 
-let hexes = [];
-let path = [];
-let playerPositions = { red: 0, blue: 0 };
-let currentPlayer = null;
-let gameStarted = false;
+    this.rings = 4;
+    this.hexSize = 50;
+    this.centerHex = null;
+    this.hexes = [];
+    this.hexGraph = {};
+    this.pathOrder = [];
 
-// Build the hex grid
-function createHexGrid(rows = 10, cols = 10) {
-  const HEX_WIDTH = 50;
-  const HEX_HEIGHT = 57.74;
-  const OFFSET = HEX_HEIGHT * 0.75;
+    this.players = [
+      { id: 1, color: "red", position: null, startHex: null },
+      { id: 2, color: "blue", position: null, startHex: null },
+    ];
+    this.currentPlayerIndex = 0;
+    this.gameStarted = false;
+    this.diceValue = 0;
 
-  let id = 0;
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const hex = document.createElement("div");
-      hex.classList.add("hex");
+    this.initBoard();
+    this.setupEventListeners();
+  }
 
-      const x = col * HEX_WIDTH + (row % 2 === 0 ? 0 : HEX_WIDTH / 2);
-      const y = row * OFFSET;
+  initBoard() {
+    this.centerHex = this.createHex(0, 0, true);
+    this.centerHex.classList.add("center");
+    this.centerHex.textContent = "★";
 
-      hex.style.left = `${x}px`;
-      hex.style.top = `${y}px`;
-      hex.dataset.id = id;
-      hex.innerText = id;
-      boardContainer.appendChild(hex);
-      hexes.push(hex);
-      id++;
+    let hexCounter = 1; // ← NUEVO: contador para numerar los hexágonos
+
+    for (let ring = 1; ring <= this.rings; ring++) {
+      const hexCount = ring * 6;
+      const radius = ring * this.hexSize * 1.5;
+
+      for (let i = 0; i < hexCount; i++) {
+        const angle = (i / hexCount) * Math.PI * 2;
+        const x = radius * Math.cos(angle);
+        const y = radius * Math.sin(angle);
+
+        const hex = this.createHex(x, y);
+        hex.textContent = `${ring}-${i}`;
+        hex.dataset.number = hexCounter; // ← NUEVO: asignar número
+        hex.classList.add("numbered"); // ← NUEVO: clase para estilo
+        this.hexes.push(hex);
+
+        if (ring === this.rings) {
+          if (i === 0) {
+            hex.classList.add("start-red");
+            this.players[0].startHex = hex;
+          } else if (i === Math.floor(hexCount / 2)) {
+            hex.classList.add("start-blue");
+            this.players[1].startHex = hex;
+          }
+        }
+
+        hexCounter++; // ← NUEVO: aumentar número
+      }
+    }
+
+    this.buildHexGraph();
+    this.calculatePathOrder();
+  }
+
+  createHex(x, y, isCenter = false) {
+    const hex = document.createElement("div");
+    hex.classList.add("hex");
+    if (isCenter) hex.classList.add("center");
+
+    const centerX = this.boardContainer.offsetWidth / 2;
+    const centerY = this.boardContainer.offsetHeight / 2;
+
+    hex.style.left = `${centerX + x - (isCenter ? 35 : 25)}px`;
+    hex.style.top = `${centerY + y - (isCenter ? 40 : 28.87)}px`;
+
+    this.boardContainer.appendChild(hex);
+    return hex;
+  }
+
+  buildHexGraph() {
+    this.hexGraph = {};
+    for (let i = 0; i < this.hexes.length; i++) {
+      const current = this.hexes[i];
+      const nextIndex = (i + 1) % this.hexes.length;
+      this.hexGraph[current.textContent] = this.hexes[nextIndex].textContent;
+    }
+    const lastHex = this.hexes[this.hexes.length - 1];
+    this.hexGraph[lastHex.textContent] = this.centerHex.textContent;
+  }
+
+  calculatePathOrder() {
+    let current = this.players[0].startHex.textContent;
+    this.pathOrder = [current];
+
+    while (true) {
+      current = this.hexGraph[current];
+      if (!current || current === this.centerHex.textContent) break;
+      this.pathOrder.push(current);
+    }
+
+    this.pathOrder.push(this.centerHex.textContent);
+  }
+
+  setupEventListeners() {
+    this.startBtn.addEventListener("click", () => this.startGame());
+    this.player1Btn.addEventListener("click", () => this.handlePlayerAction(0));
+    this.player2Btn.addEventListener("click", () => this.handlePlayerAction(1));
+  }
+
+  startGame() {
+    if (this.gameStarted) return;
+
+    this.gameStarted = true;
+    this.startBtn.disabled = true;
+
+    this.currentPlayerIndex = Math.floor(Math.random() * 2);
+    this.updateTurnIndicator();
+
+    this.players[0].position = this.players[0].startHex;
+    this.players[1].position = this.players[1].startHex;
+
+    this.createMonster(this.players[0].startHex, "red");
+    this.createMonster(this.players[1].startHex, "blue");
+
+    this.updatePlayerButtons();
+  }
+
+  handlePlayerAction(playerIndex) {
+    if (!this.gameStarted || this.currentPlayerIndex !== playerIndex) return;
+
+    if (this.diceValue === 0) {
+      this.rollDice();
+    } else {
+      this.movePlayer();
     }
   }
 
-  // Center cell
-  const centerId = Math.floor(hexes.length / 2);
-  hexes[centerId].classList.add("center");
+  rollDice() {
+    this.diceElement.classList.add("dice-rolling");
+    this.diceValueElement.textContent = "Rolling...";
 
-  // Create a circular path (clockwise outer ring)
-  const outerRing = getClockwiseRing(rows, cols);
-  path = outerRing;
-  for (let id of path) {
-    hexes[id].classList.add("path");
+    setTimeout(() => {
+      this.diceValue = Math.floor(Math.random() * 6) + 1;
+      this.diceElement.textContent = this.diceValue;
+      this.diceValueElement.textContent = `Move ${this.diceValue} spaces`;
+      this.diceElement.classList.remove("dice-rolling");
+
+      this.highlightPossibleMoves();
+    }, 1000);
   }
 
-  // Start positions
-  hexes[path[0]].classList.add("start-red");
-  hexes[path[Math.floor(path.length / 2)]].classList.add("start-blue");
-}
+  highlightPossibleMoves() {
+    this.hexes.forEach((hex) => hex.classList.remove("path"));
 
-function getClockwiseRing(rows, cols) {
-  let ring = [];
+    const currentPlayer = this.players[this.currentPlayerIndex];
+    const currentPosition = currentPlayer.position.textContent;
+    const currentIndex = this.pathOrder.indexOf(currentPosition);
 
-  // Top row
-  for (let i = 0; i < cols; i++) ring.push(i);
-  // Right column
-  for (let i = 1; i < rows; i++) ring.push(i * cols + (cols - 1));
-  // Bottom row (reverse)
-  for (let i = cols - 2; i >= 0; i--) ring.push((rows - 1) * cols + i);
-  // Left column (reverse)
-  for (let i = rows - 2; i > 0; i--) ring.push(i * cols);
-
-  return ring;
-}
-
-// Draw monster token
-function renderMonsters() {
-  document.querySelectorAll(".monster").forEach((m) => m.remove());
-
-  const redHex = hexes[path[playerPositions.red]];
-  const red = document.createElement("div");
-  red.classList.add("monster", "red");
-  red.style.left = "10px";
-  red.style.top = "10px";
-  redHex.appendChild(red);
-
-  const blueHex = hexes[path[playerPositions.blue]];
-  const blue = document.createElement("div");
-  blue.classList.add("monster", "blue");
-  blue.style.left = "10px";
-  blue.style.top = "30px";
-  blueHex.appendChild(blue);
-}
-
-// Start game
-startBtn.addEventListener("click", () => {
-  if (gameStarted) return;
-  gameStarted = true;
-  currentPlayer = Math.random() > 0.5 ? "red" : "blue";
-  updateUI();
-});
-
-// Player button click
-player1Btn.addEventListener("click", () => {
-  if (currentPlayer === "red") rollDice("red");
-});
-
-player2Btn.addEventListener("click", () => {
-  if (currentPlayer === "blue") rollDice("blue");
-});
-
-// Roll dice and move
-function rollDice(player) {
-  const roll = Math.floor(Math.random() * 6) + 1;
-  animateDice(roll);
-
-  setTimeout(() => {
-    movePlayer(player, roll);
-  }, 800);
-}
-
-// Move player along path
-function movePlayer(player, steps) {
-  playerPositions[player] += steps;
-  if (playerPositions[player] >= path.length) {
-    playerPositions[player] = playerPositions[player] % path.length;
+    for (let i = 1; i <= this.diceValue; i++) {
+      const nextIndex = (currentIndex + i) % this.pathOrder.length;
+      const nextHexText = this.pathOrder[nextIndex];
+      const hex = this.findHexByText(nextHexText);
+      if (hex) hex.classList.add("path");
+    }
   }
 
-  // Check if landed on opponent
-  const opponent = player === "red" ? "blue" : "red";
-  if (playerPositions[player] === playerPositions[opponent]) {
-    playerPositions[opponent] =
-      opponent === "red" ? 0 : Math.floor(path.length / 2);
+  movePlayer() {
+    const currentPlayer = this.players[this.currentPlayerIndex];
+    const opponent = this.players[1 - this.currentPlayerIndex];
+    const currentPosition = currentPlayer.position.textContent;
+    const currentIndex = this.pathOrder.indexOf(currentPosition);
+
+    const newIndex = (currentIndex + this.diceValue) % this.pathOrder.length;
+    const newHexText = this.pathOrder[newIndex];
+    const newHex = this.findHexByText(newHexText);
+
+    if (newHex === this.centerHex) {
+      this.endGame(currentPlayer);
+      return;
+    }
+
+    if (newHex === opponent.position) {
+      this.sendToStart(opponent);
+    }
+
+    this.removeMonster(currentPlayer.position);
+    currentPlayer.position = newHex;
+    this.createMonster(newHex, currentPlayer.color);
+
+    this.diceValue = 0;
+    this.diceElement.textContent = "0";
+    this.diceValueElement.textContent = "Roll dice";
+    this.currentPlayerIndex = 1 - this.currentPlayerIndex;
+
+    this.updateTurnIndicator();
+    this.updatePlayerButtons();
+    this.hexes.forEach((hex) => hex.classList.remove("path"));
   }
 
-  renderMonsters();
-
-  // Check win
-  const centerId = Math.floor(hexes.length / 2);
-  const playerHex = hexes[path[playerPositions[player]]];
-  if (playerHex.dataset.id == centerId) {
-    turnIndicator.innerText = `${player.toUpperCase()} wins! 🎉`;
-    turnIndicator.className = player;
-    player1Btn.disabled = true;
-    player2Btn.disabled = true;
-    return;
+  createMonster(hex, color) {
+    const monster = document.createElement("div");
+    monster.classList.add("monster", color);
+    hex.appendChild(monster);
   }
 
-  // Switch turn
-  currentPlayer = opponent;
-  updateUI();
-}
+  removeMonster(hex) {
+    const monster = hex.querySelector(".monster");
+    if (monster) hex.removeChild(monster);
+  }
 
-function updateUI() {
-  if (currentPlayer === "red") {
-    player1Btn.classList.add("active");
-    player2Btn.classList.remove("active");
-    player1Btn.disabled = false;
-    player2Btn.disabled = true;
-    turnIndicator.innerText = "Red's Turn";
-    turnIndicator.className = "red";
-  } else {
-    player2Btn.classList.add("active");
-    player1Btn.classList.remove("active");
-    player2Btn.disabled = false;
-    player1Btn.disabled = true;
-    turnIndicator.innerText = "Blue's Turn";
-    turnIndicator.className = "blue";
+  sendToStart(player) {
+    this.removeMonster(player.position);
+    player.position = player.startHex;
+    this.createMonster(player.startHex, player.color);
+  }
+
+  findHexByText(text) {
+    if (text === this.centerHex.textContent) return this.centerHex;
+    return this.hexes.find((hex) => hex.textContent === text);
+  }
+
+  updateTurnIndicator() {
+    const player = this.players[this.currentPlayerIndex];
+    this.turnIndicator.textContent = `Player ${player.id}'s Turn (${player.color})`;
+    this.turnIndicator.className = player.color;
+  }
+
+  updatePlayerButtons() {
+    this.player1Btn.classList.toggle("active", this.currentPlayerIndex === 0);
+    this.player2Btn.classList.toggle("active", this.currentPlayerIndex === 1);
+  }
+
+  endGame(winner) {
+    alert(`Player ${winner.id} (${winner.color}) wins!`);
+    this.resetGame();
+  }
+
+  resetGame() {
+    this.hexes.forEach((hex) => {
+      const monster = hex.querySelector(".monster");
+      if (monster) hex.removeChild(monster);
+    });
+    const centerMonster = this.centerHex.querySelector(".monster");
+    if (centerMonster) this.centerHex.removeChild(centerMonster);
+
+    this.gameStarted = false;
+    this.currentPlayerIndex = 0;
+    this.diceValue = 0;
+    this.startBtn.disabled = false;
+
+    this.diceElement.textContent = "0";
+    this.diceValueElement.textContent = "Roll dice";
+    this.turnIndicator.textContent = "Game not started";
+    this.turnIndicator.className = "";
+    this.player1Btn.classList.remove("active");
+    this.player2Btn.classList.remove("active");
+    this.hexes.forEach((hex) => hex.classList.remove("path"));
   }
 }
 
-// Animate dice roll
-function animateDice(value) {
-  diceDisplay.classList.add("dice-rolling");
-  diceValueDisplay.innerText = "Rolling...";
-  setTimeout(() => {
-    diceDisplay.classList.remove("dice-rolling");
-    diceDisplay.innerText = value;
-    diceValueDisplay.innerText = `You rolled: ${value}`;
-  }, 600);
-}
-
-// Init game
-createHexGrid();
-renderMonsters();
+window.onload = () => new CircularHexGame();

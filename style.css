@@ -226,3 +226,17 @@ h1 {
     height: 57.74px;
   }
 }
+
+/* === NUEVO === */
+/* Muestra el número sobre cada hexágono con data-number */
+.hex.numbered::before {
+  content: attr(data-number);
+  position: absolute;
+  top: -10px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  color: yellow;
+  pointer-events: none;
+}
