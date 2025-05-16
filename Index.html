@@ -7,20 +7,16 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <h1>Monster Mayhem - Circular</h1>
-
+    <h1>Monster Mayhem</h1>
     <div id="game-ui">
-      <button id="start-btn">Start Game</button>
-      <button id="player1-btn" class="player-btn">Player 1 (Red)</button>
-      <div id="dice-container">
-        <div id="dice">0</div>
-        <div id="dice-value">Roll dice</div>
-      </div>
-      <button id="player2-btn" class="player-btn">Player 2 (Blue)</button>
+      <button id="start-btn">Start</button>
+      <button id="player1-btn" class="player-btn">Player 1</button>
+      <button id="player2-btn" class="player-btn">Player 2</button>
+      <button id="confirm-btn">Confirm Move</button>
+      <div id="dice">🎲 0</div>
     </div>
-
     <div id="board-container"></div>
-    <div id="turn-indicator">Game not started</div>
+    <div id="turn-indicator">Waiting to start...</div>
 
     <!-- Cargamos el script JS -->
     <script src="script.js"></script>
